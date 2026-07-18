@@ -1,0 +1,82 @@
+[
+  {
+    "name": "leagues menu button shows empty state when no leagues",
+    "steps": [
+      {
+        "send": { "callback": "leagues:list" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "No leagues available yet — check back soon!"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "/leagues command shows empty state when no leagues",
+    "steps": [
+      {
+        "send": { "text": "/leagues" },
+        "expect": [
+          {
+            "method": "sendMessage",
+            "payload": {
+              "text": "No leagues available yet — check back soon!"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "selecting an invalid league shows not found",
+    "steps": [
+      {
+        "send": { "callback": "leagues:select:nonexistent" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "Couldn't find that league — it may have been removed."
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "countries filter shows empty state when no leagues",
+    "steps": [
+      {
+        "send": { "callback": "leagues:countries" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "No leagues available yet."
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tier filter shows empty state when no leagues",
+    "steps": [
+      {
+        "send": { "callback": "leagues:tiers" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "No leagues available yet."
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

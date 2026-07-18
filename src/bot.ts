@@ -13,6 +13,10 @@ export interface Session {
     away_team?: string;
     match_datetime?: string;
     competition_name?: string;
+    league_id?: string;
+  };
+  predictFlow?: {
+    league_id?: string;
   };
 }
 

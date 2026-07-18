@@ -7,6 +7,7 @@ const HELP =
   "ℹ️ Here's how Football Predictor works:\n\n" +
   "• ⚽ Matches — see upcoming games\n" +
   "• 🔮 Predict — pick who you think will win\n" +
+  "• 🏆 Leagues — browse by league\n" +
   "• 🏆 Leaderboard — check the top predictors\n" +
   "• 📊 My Guesses — review your predictions\n\n" +
   "Tap /start to open the menu and get going!";

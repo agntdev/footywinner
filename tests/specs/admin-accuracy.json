@@ -1,0 +1,50 @@
+[
+  {
+    "name": "admin accuracy dashboard shows empty state",
+    "steps": [
+      {
+        "send": { "callback": "admin:accuracy" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "📊 Accuracy Dashboard\n\nOverall: 0/0 correct (0%)\n\nTarget: 95%\n⚠️ Target not yet met\n\nReasons:\n  • Insufficient prediction history (need 10+)"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "admin tuning settings shows defaults",
+    "steps": [
+      {
+        "send": { "callback": "admin:tuning" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "🔧 Tuning settings\n\nStatus: OFF\nTarget accuracy: 95%"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "admin leagues menu shows empty state",
+    "steps": [
+      {
+        "send": { "callback": "admin:leagues" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "🏆 No leagues yet — add one to organize your matches!"
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -2,6 +2,7 @@ import { Composer } from "grammy";
 import type { BotContext } from "../toolkit/index.js";
 import { inlineButton, inlineKeyboard } from "../toolkit/index.js";
 import { type Ctx } from "../bot.js";
+import { generatePredictions } from "../predictions/model.js";
 
 const composer = new Composer<BotContext>();
 
@@ -18,7 +19,7 @@ function labelFor(outcome: string): string {
   return "Draw";
 }
 
-// Handle predict:match:<id> — show match details with outcome buttons
+// Handle predict:match:<id> — show match details with five market predictions + outcome buttons
 composer.callbackQuery(/^predict:match:(.+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
   const matchId = ctx.match![1];
@@ -39,11 +40,35 @@ composer.callbackQuery(/^predict:match:(.+)$/, async (ctx) => {
 
   const predLabel = existing ? `\nYour pick: ${labelFor(existing.outcome)}` : "";
 
+  // Generate five market predictions
+  const markets = generatePredictions(
+    matchId,
+    match.home_team,
+    match.away_team,
+    match.competition_name,
+    match.match_datetime,
+  );
+
+  const marketLines = markets.map(
+    (m, i) => `${i + 1}. ${m.market}: ${m.selection} (${m.confidence}% confident)`,
+  );
+
+  // Check tuning status
+  const settings = await storage.getAdminSettings(chatId);
+  const overallMetrics = await storage.getAccuracyMetrics(chatId);
+  let tuningNotice = "";
+  if (settings.tuning_enabled && overallMetrics.total_predictions > 0 && overallMetrics.accuracy_pct < settings.target_accuracy_pct) {
+    tuningNotice = "\n\n🔧 Predictions are being tuned for better accuracy.";
+  }
+
   const text =
     `⚽ ${match.home_team} vs ${match.away_team}\n` +
     `📅 ${formatDate(match.match_datetime)}\n` +
     `🏆 ${match.competition_name}` +
     predLabel +
+    `\n\n🎯 Our predictions:\n\n` +
+    marketLines.join("\n") +
+    tuningNotice +
     `\n\nWho do you think will win?`;
 
   const buttons = [
@@ -88,12 +113,22 @@ composer.callbackQuery(/^predict:pick:(.+):(home|draw|away)$/, async (ctx) => {
     return;
   }
 
+  // Generate markets for storage
+  const markets = generatePredictions(
+    matchId,
+    match.home_team,
+    match.away_team,
+    match.competition_name,
+    match.match_datetime,
+  );
+
   await storage.setPrediction({
     user_id: userId,
     match_id: matchId,
     outcome,
     timestamp: now.toISOString(),
     chat_id: chatId,
+    markets,
   });
 
   const text =
