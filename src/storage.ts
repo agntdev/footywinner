@@ -3,6 +3,14 @@ import { resolveSessionStorage } from "./toolkit/index.js";
 
 // ─── Domain data types ───────────────────────────────────────────────────────
 
+export interface League {
+  id: string;
+  name: string;
+  country: string;
+  tier: number;
+  chat_id: number;
+}
+
 export interface Match {
   id: string;
   home_team: string;
@@ -10,6 +18,13 @@ export interface Match {
   match_datetime: string; // ISO 8601
   competition_name: string;
   chat_id: number;
+  league_id?: string;
+}
+
+export interface PredictionMarket {
+  market: string;
+  selection: string;
+  confidence: number; // 0-100
 }
 
 export interface Prediction {
@@ -18,6 +33,7 @@ export interface Prediction {
   outcome: "home" | "draw" | "away";
   timestamp: string; // ISO 8601
   chat_id: number;
+  markets?: PredictionMarket[];
 }
 
 export interface Result {
@@ -38,6 +54,22 @@ export interface UserRecord {
   telegram_id: number;
   display_name: string;
   handle?: string;
+}
+
+export interface AccuracyMetrics {
+  chat_id: number;
+  league_id?: string;
+  total_predictions: number;
+  correct_predictions: number;
+  accuracy_pct: number;
+  last_updated: string;
+  market_accuracy: Record<string, { total: number; correct: number }>;
+}
+
+export interface AdminSettings {
+  chat_id: number;
+  tuning_enabled: boolean;
+  target_accuracy_pct: number;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -63,6 +95,67 @@ export class Storage {
     await this.db.write(key, value as AnyRecord);
   }
 
+  // ── Leagues ─────────────────────────────────────────────────────────────
+
+  async addLeague(league: League): Promise<void> {
+    await this.set(`league:${league.chat_id}:${league.id}`, league);
+    const ids = await this.getLeagueIds(league.chat_id);
+    if (!ids.includes(league.id)) {
+      ids.push(league.id);
+      await this.set(`league_ids:${league.chat_id}`, ids);
+    }
+  }
+
+  async getLeague(chatId: number, leagueId: string): Promise<League | undefined> {
+    return this.get<League>(`league:${chatId}:${leagueId}`);
+  }
+
+  async getLeagueIds(chatId: number): Promise<string[]> {
+    return (await this.get<string[]>(`league_ids:${chatId}`)) ?? [];
+  }
+
+  async getAllLeagues(chatId: number): Promise<League[]> {
+    const ids = await this.getLeagueIds(chatId);
+    const leagues: League[] = [];
+    for (const id of ids) {
+      const l = await this.getLeague(chatId, id);
+      if (l) leagues.push(l);
+    }
+    return leagues;
+  }
+
+  async getLeaguesByCountry(chatId: number, country: string): Promise<League[]> {
+    const all = await this.getAllLeagues(chatId);
+    return all.filter((l) => l.country.toLowerCase() === country.toLowerCase());
+  }
+
+  async getLeaguesByTier(chatId: number, tier: number): Promise<League[]> {
+    const all = await this.getAllLeagues(chatId);
+    return all.filter((l) => l.tier === tier);
+  }
+
+  async searchLeagues(chatId: number, query: string): Promise<League[]> {
+    const all = await this.getAllLeagues(chatId);
+    const q = query.toLowerCase();
+    return all.filter(
+      (l) =>
+        l.name.toLowerCase().includes(q) ||
+        l.country.toLowerCase().includes(q),
+    );
+  }
+
+  async getCountries(chatId: number): Promise<string[]> {
+    const all = await this.getAllLeagues(chatId);
+    const countries = [...new Set(all.map((l) => l.country))];
+    return countries.sort();
+  }
+
+  async getTiers(chatId: number): Promise<number[]> {
+    const all = await this.getAllLeagues(chatId);
+    const tiers = [...new Set(all.map((l) => l.tier))];
+    return tiers.sort((a, b) => a - b);
+  }
+
   // ── Matches ──────────────────────────────────────────────────────────────
 
   async addMatch(match: Match): Promise<void> {
@@ -71,6 +164,13 @@ export class Storage {
     if (!ids.includes(match.id)) {
       ids.push(match.id);
       await this.set(`match_ids:${match.chat_id}`, ids);
+    }
+    if (match.league_id) {
+      const lIds = await this.getLeagueMatchIds(match.chat_id, match.league_id);
+      if (!lIds.includes(match.id)) {
+        lIds.push(match.id);
+        await this.set(`league_match_ids:${match.chat_id}:${match.league_id}`, lIds);
+      }
     }
   }
 
@@ -82,8 +182,29 @@ export class Storage {
     return (await this.get<string[]>(`match_ids:${chatId}`)) ?? [];
   }
 
+  async getLeagueMatchIds(chatId: number, leagueId: string): Promise<string[]> {
+    return (await this.get<string[]>(`league_match_ids:${chatId}:${leagueId}`)) ?? [];
+  }
+
   async getUpcomingMatches(chatId: number, now: () => Date = () => new Date()): Promise<Match[]> {
     const ids = await this.getMatchIds(chatId);
+    const nowTs = now().getTime();
+    const matches: Match[] = [];
+    for (const id of ids) {
+      const m = await this.getMatch(chatId, id);
+      if (m && new Date(m.match_datetime).getTime() > nowTs) matches.push(m);
+    }
+    return matches.sort(
+      (a, b) => new Date(a.match_datetime).getTime() - new Date(b.match_datetime).getTime(),
+    );
+  }
+
+  async getUpcomingMatchesByLeague(
+    chatId: number,
+    leagueId: string,
+    now: () => Date = () => new Date(),
+  ): Promise<Match[]> {
+    const ids = await this.getLeagueMatchIds(chatId, leagueId);
     const nowTs = now().getTime();
     const matches: Match[] = [];
     for (const id of ids) {
@@ -109,13 +230,11 @@ export class Storage {
 
   async setPrediction(pred: Prediction): Promise<void> {
     await this.set(`prediction:${pred.chat_id}:${pred.user_id}:${pred.match_id}`, pred);
-    // user index
     const userIdx = await this.getUserPredictionIds(pred.chat_id, pred.user_id);
     if (!userIdx.includes(pred.match_id)) {
       userIdx.push(pred.match_id);
       await this.set(`user_preds:${pred.chat_id}:${pred.user_id}`, userIdx);
     }
-    // match index
     const matchIdx = await this.getMatchPredictionIds(pred.chat_id, pred.match_id);
     if (!matchIdx.includes(pred.user_id)) {
       matchIdx.push(pred.user_id);
@@ -216,6 +335,100 @@ export class Storage {
 
   async getAdminIds(chatId: number): Promise<number[]> {
     return (await this.get<number[]>(`admins:${chatId}`)) ?? [];
+  }
+
+  // ── Admin settings (tuning) ──────────────────────────────────────────────
+
+  async getAdminSettings(chatId: number): Promise<AdminSettings> {
+    const s = await this.get<AdminSettings>(`admin_settings:${chatId}`);
+    return s ?? { chat_id: chatId, tuning_enabled: false, target_accuracy_pct: 95 };
+  }
+
+  async setAdminSettings(settings: AdminSettings): Promise<void> {
+    await this.set(`admin_settings:${settings.chat_id}`, settings);
+  }
+
+  // ── Accuracy metrics ─────────────────────────────────────────────────────
+
+  async getAccuracyMetrics(chatId: number, leagueId?: string): Promise<AccuracyMetrics> {
+    const key = leagueId
+      ? `accuracy:${chatId}:${leagueId}`
+      : `accuracy:${chatId}:overall`;
+    const m = await this.get<AccuracyMetrics>(key);
+    return m ?? {
+      chat_id: chatId,
+      league_id: leagueId,
+      total_predictions: 0,
+      correct_predictions: 0,
+      accuracy_pct: 0,
+      last_updated: new Date().toISOString(),
+      market_accuracy: {},
+    };
+  }
+
+  async setAccuracyMetrics(metrics: AccuracyMetrics): Promise<void> {
+    const key = metrics.league_id
+      ? `accuracy:${metrics.chat_id}:${metrics.league_id}`
+      : `accuracy:${metrics.chat_id}:overall`;
+    await this.set(key, metrics);
+  }
+
+  async getAccuracyMetricIds(chatId: number): Promise<string[]> {
+    return (await this.get<string[]>(`accuracy_idx:${chatId}`)) ?? [];
+  }
+
+  async recordPredictionOutcome(
+    chatId: number,
+    userId: number,
+    matchId: string,
+    predicted: string,
+    actual: string,
+    marketKey?: string,
+  ): Promise<void> {
+    const isCorrect = predicted === actual;
+    const points = isCorrect ? 3 : 0;
+    const correctDelta = isCorrect ? 1 : 0;
+    await this.updateLeaderboard(chatId, userId, points, correctDelta);
+
+    // Update overall accuracy
+    const overall = await this.getAccuracyMetrics(chatId);
+    overall.total_predictions += 1;
+    if (isCorrect) overall.correct_predictions += 1;
+    overall.accuracy_pct = overall.total_predictions > 0
+      ? Math.round((overall.correct_predictions / overall.total_predictions) * 100)
+      : 0;
+    overall.last_updated = new Date().toISOString();
+    await this.setAccuracyMetrics(overall);
+
+    // Update league-level accuracy if available
+    const match = await this.getMatch(chatId, matchId);
+    if (match?.league_id) {
+      const leagueMetrics = await this.getAccuracyMetrics(chatId, match.league_id);
+      leagueMetrics.total_predictions += 1;
+      if (isCorrect) leagueMetrics.correct_predictions += 1;
+      leagueMetrics.accuracy_pct = leagueMetrics.total_predictions > 0
+        ? Math.round((leagueMetrics.correct_predictions / leagueMetrics.total_predictions) * 100)
+        : 0;
+      leagueMetrics.last_updated = new Date().toISOString();
+      await this.setAccuracyMetrics(leagueMetrics);
+
+      const idx = await this.getAccuracyMetricIds(chatId);
+      if (!idx.includes(match.league_id)) {
+        idx.push(match.league_id);
+        await this.set(`accuracy_idx:${chatId}`, idx);
+      }
+    }
+
+    // Update per-market accuracy
+    if (marketKey) {
+      const metrics = await this.getAccuracyMetrics(chatId);
+      if (!metrics.market_accuracy[marketKey]) {
+        metrics.market_accuracy[marketKey] = { total: 0, correct: 0 };
+      }
+      metrics.market_accuracy[marketKey].total += 1;
+      if (isCorrect) metrics.market_accuracy[marketKey].correct += 1;
+      await this.setAccuracyMetrics(metrics);
+    }
   }
 }
 

@@ -8,7 +8,7 @@
           {
             "method": "editMessageText",
             "payload": {
-              "text": "⚙️ Admin panel\n\n• Add a new match\n• Post match results\n• View all matches"
+              "text": "⚙️ Admin panel\n\n• Add a new match\n• Post match results\n• View all matches\n• Manage leagues\n• Accuracy dashboard\n• Tuning settings"
             }
           }
         ]
