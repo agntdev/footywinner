@@ -1,19 +1,33 @@
 [
   {
-    "name": "/leaderboard",
+    "name": "/leaderboard shows empty state when no predictions",
     "steps": [
       {
+        "send": { "text": "/leaderboard" },
         "expect": [
           {
             "method": "sendMessage",
             "payload": {
-              "text": "Show top users by prediction accuracy"
+              "text": "No predictions yet — be the first to predict a match!"
             }
           }
-        ],
-        "send": {
-          "text": "/leaderboard"
-        }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "leaderboard menu button shows empty state",
+    "steps": [
+      {
+        "send": { "callback": "leaderboard:show" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "No predictions yet — be the first to predict a match!"
+            }
+          }
+        ]
       }
     ]
   }

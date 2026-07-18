@@ -1,0 +1,50 @@
+[
+  {
+    "name": "admin menu button shows admin panel",
+    "steps": [
+      {
+        "send": { "callback": "admin:menu" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "⚙️ Admin panel\n\n• Add a new match\n• Post match results\n• View all matches"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "admin addmatch starts the add match flow",
+    "steps": [
+      {
+        "send": { "callback": "admin:addmatch" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "➕ Let's add a match!\n\nWhat's the home team's name?"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "admin cancel exits the flow",
+    "steps": [
+      {
+        "send": { "callback": "admin:cancel" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "Cancelled."
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

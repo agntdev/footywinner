@@ -1,15 +1,22 @@
 import { Composer } from "grammy";
 import { readdirSync } from "node:fs";
 import { createBot, type BotContext } from "./toolkit/index.js";
+import { getStorage, type Storage } from "./storage.js";
 
 // The per-chat session shape (ephemeral conversation state only). Extend as the
 // bot grows. Durable domain data must NOT live here — use the toolkit's
 // persistent storage (see AGENTS.md).
 export interface Session {
-  // example: step?: "awaiting_amount";
+  step?: string;
+  addMatch?: {
+    home_team?: string;
+    away_team?: string;
+    match_datetime?: string;
+    competition_name?: string;
+  };
 }
 
-export type Ctx = BotContext<Session>;
+export type Ctx = BotContext<Session> & { storage: Storage };
 
 /**
  * buildBot — assembles the bot, AUTO-LOADS every feature handler from
@@ -20,6 +27,13 @@ export type Ctx = BotContext<Session>;
 export async function buildBot(token: string) {
   const bot = createBot<Session>(token, {
     initial: () => ({}),
+  });
+
+  // Attach domain storage to every context via middleware
+  const storage = getStorage();
+  bot.use(async (ctx, next) => {
+    (ctx as Ctx).storage = storage;
+    await next();
   });
 
   const dir = new URL("./handlers/", import.meta.url);
@@ -37,7 +51,7 @@ export async function buildBot(token: string) {
     files = []; // no handlers/ dir yet → nothing to load
   }
   for (const file of files.sort()) {
-    const mod = (await import(new URL(file, dir).href)) as { default?: Composer<Ctx> };
+    const mod = (await import(new URL(file, dir).href)) as { default?: Composer<BotContext<Session>> };
     if (!mod.default) {
       throw new Error(`handler ${file} must default-export a grammY Composer`);
     }
