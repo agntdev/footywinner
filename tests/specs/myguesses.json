@@ -1,0 +1,20 @@
+[
+  {
+    "name": "/myguesses",
+    "steps": [
+      {
+        "expect": [
+          {
+            "method": "sendMessage",
+            "payload": {
+              "text": "View personal prediction history and status"
+            }
+          }
+        ],
+        "send": {
+          "text": "/myguesses"
+        }
+      }
+    ]
+  }
+]
