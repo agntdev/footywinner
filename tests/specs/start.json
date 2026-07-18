@@ -12,5 +12,19 @@
         ]
       }
     ]
+  },
+  {
+    "name": "menu:main callback returns to the main menu",
+    "steps": [
+      {
+        "send": { "callback": "menu:main" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": { "text": "👋 Welcome to Football Predictor! Tap a button below to get started." }
+          }
+        ]
+      }
+    ]
   }
 ]

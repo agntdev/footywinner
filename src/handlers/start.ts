@@ -14,13 +14,18 @@ const WELCOME = "👋 Welcome to Football Predictor! Tap a button below to get s
 const composer = new Composer<BotContext>();
 
 composer.command("start", async (ctx) => {
+  console.log("[/start] user=%d chat=%d", ctx.from?.id, ctx.chat?.id);
   if (ctx.from) {
-    const storage = (ctx as unknown as Ctx).storage;
-    await storage.setUser({
-      telegram_id: ctx.from.id,
-      display_name: [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" "),
-      handle: ctx.from.username,
-    });
+    try {
+      const storage = (ctx as unknown as Ctx).storage;
+      await storage.setUser({
+        telegram_id: ctx.from.id,
+        display_name: [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" "),
+        handle: ctx.from.username,
+      });
+    } catch (err) {
+      console.error("[/start] failed to save user:", err);
+    }
   }
   await ctx.reply(WELCOME, { reply_markup: mainMenuKeyboard() });
 });
