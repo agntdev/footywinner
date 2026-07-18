@@ -1,19 +1,33 @@
 [
   {
-    "name": "/predict",
+    "name": "/predict shows empty state when no matches",
     "steps": [
       {
+        "send": { "text": "/predict" },
         "expect": [
           {
             "method": "sendMessage",
             "payload": {
-              "text": "Make or update prediction for a specific match"
+              "text": "No matches to predict yet — check back soon!"
             }
           }
-        ],
-        "send": {
-          "text": "/predict"
-        }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "predict menu button shows empty state",
+    "steps": [
+      {
+        "send": { "callback": "predict:start" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "No matches to predict yet — check back soon!"
+            }
+          }
+        ]
       }
     ]
   }

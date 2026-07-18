@@ -1,15 +1,61 @@
 import { Composer } from "grammy";
+import type { BotContext } from "../toolkit/index.js";
+import { inlineButton, inlineKeyboard } from "../toolkit/index.js";
+import { type Ctx } from "../bot.js";
 
-// SCAFFOLD — generated from the bot blueprint BEFORE the agent runs.
-// Keep a LIVE registration (.command / .callbackQuery / …) so this feature is
-// never an empty stub. Replace the reply body with real logic + copy; if you
-// change the user-facing text, update tests/specs to match EXACTLY.
-// Do NOT rewrite src/bot.ts — buildBot() already auto-loads this module.
+const composer = new Composer<BotContext>();
 
-const composer = new Composer();
+const MEDALS = ["🥇", "🥈", "🥉"];
+
+composer.callbackQuery("leaderboard:show", async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const storage = (ctx as unknown as Ctx).storage;
+  const chatId = ctx.chat?.id ?? 0;
+  const entries = await storage.getLeaderboard(chatId);
+
+  if (entries.length === 0) {
+    await ctx.editMessageText("No predictions yet — be the first to predict a match!", {
+      reply_markup: inlineKeyboard([[inlineButton("⬅️ Back to menu", "menu:main")]]),
+    });
+    return;
+  }
+
+  const lines = entries.map((e, i) => {
+    const medal = i < 3 ? MEDALS[i] : `${i + 1}.`;
+    const name = `User ${e.user_id}`;
+    return `${medal} ${name} — ${e.points} pts (${e.correct_predictions} correct)`;
+  });
+
+  const text = `🏆 Leaderboard:\n\n${lines.join("\n")}`;
+
+  await ctx.editMessageText(text, {
+    reply_markup: inlineKeyboard([[inlineButton("⬅️ Back to menu", "menu:main")]]),
+  });
+});
 
 composer.command("leaderboard", async (ctx) => {
-  await ctx.reply("Show top users by prediction accuracy");
+  const storage = (ctx as unknown as Ctx).storage;
+  const chatId = ctx.chat?.id ?? 0;
+  const entries = await storage.getLeaderboard(chatId);
+
+  if (entries.length === 0) {
+    await ctx.reply("No predictions yet — be the first to predict a match!", {
+      reply_markup: inlineKeyboard([[inlineButton("⬅️ Back to menu", "menu:main")]]),
+    });
+    return;
+  }
+
+  const lines = entries.map((e, i) => {
+    const medal = i < 3 ? MEDALS[i] : `${i + 1}.`;
+    const name = `User ${e.user_id}`;
+    return `${medal} ${name} — ${e.points} pts (${e.correct_predictions} correct)`;
+  });
+
+  const text = `🏆 Leaderboard:\n\n${lines.join("\n")}`;
+
+  await ctx.reply(text, {
+    reply_markup: inlineKeyboard([[inlineButton("⬅️ Back to menu", "menu:main")]]),
+  });
 });
 
 export default composer;

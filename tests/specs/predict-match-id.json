@@ -1,19 +1,17 @@
 [
   {
-    "name": "Predict",
+    "name": "predict:match callback shows match not found for invalid id",
     "steps": [
       {
+        "send": { "callback": "predict:match:nonexistent" },
         "expect": [
           {
-            "method": "sendMessage",
+            "method": "editMessageText",
             "payload": {
-              "text": "Inline button to select prediction outcome"
+              "text": "Couldn't find that match — it may have been removed."
             }
           }
-        ],
-        "send": {
-          "callback": "predict:match_id"
-        }
+        ]
       }
     ]
   }

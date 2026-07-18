@@ -1,19 +1,33 @@
 [
   {
-    "name": "/myguesses",
+    "name": "/myguesses shows empty state when no predictions",
     "steps": [
       {
+        "send": { "text": "/myguesses" },
         "expect": [
           {
             "method": "sendMessage",
             "payload": {
-              "text": "View personal prediction history and status"
+              "text": "You haven't made any predictions yet — tap Predict to get started!"
             }
           }
-        ],
-        "send": {
-          "text": "/myguesses"
-        }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "myguesses menu button shows empty state",
+    "steps": [
+      {
+        "send": { "callback": "myguesses:show" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "You haven't made any predictions yet — tap Predict to get started!"
+            }
+          }
+        ]
       }
     ]
   }
