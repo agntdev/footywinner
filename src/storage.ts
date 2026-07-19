@@ -226,6 +226,70 @@ export class Storage {
     return matches;
   }
 
+  async getTodayMatches(chatId: number, now: () => Date = () => new Date()): Promise<Match[]> {
+    const today = now();
+    const startOfDay = new Date(today);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(today);
+    endOfDay.setHours(23, 59, 59, 999);
+    const startTs = startOfDay.getTime();
+    const endTs = endOfDay.getTime();
+    const ids = await this.getMatchIds(chatId);
+    const matches: Match[] = [];
+    for (const id of ids) {
+      const m = await this.getMatch(chatId, id);
+      if (m) {
+        const mt = new Date(m.match_datetime).getTime();
+        if (mt >= startTs && mt <= endTs) matches.push(m);
+      }
+    }
+    return matches.sort(
+      (a, b) => new Date(a.match_datetime).getTime() - new Date(b.match_datetime).getTime(),
+    );
+  }
+
+  async getLeaguesWithTodayMatches(chatId: number, now: () => Date = () => new Date()): Promise<{ league: League; matchCount: number }[]> {
+    const todayMatches = await this.getTodayMatches(chatId, now);
+    const leagueMap = new Map<string, { league: League; matchCount: number }>();
+    for (const m of todayMatches) {
+      if (m.league_id) {
+        const existing = leagueMap.get(m.league_id);
+        if (existing) {
+          existing.matchCount++;
+        } else {
+          const league = await this.getLeague(chatId, m.league_id);
+          if (league) {
+            leagueMap.set(m.league_id, { league, matchCount: 1 });
+          }
+        }
+      }
+    }
+    return [...leagueMap.values()];
+  }
+
+  async getTodayMatchesByLeague(chatId: number, leagueId: string, now: () => Date = () => new Date()): Promise<Match[]> {
+    const todayMatches = await this.getTodayMatches(chatId, now);
+    return todayMatches.filter((m) => m.league_id === leagueId);
+  }
+
+  async getNextMatchDate(chatId: number, now: () => Date = () => new Date()): Promise<string | undefined> {
+    const nowTs = now().getTime();
+    const ids = await this.getMatchIds(chatId);
+    let earliest: string | undefined;
+    let earliestTs = Infinity;
+    for (const id of ids) {
+      const m = await this.getMatch(chatId, id);
+      if (m) {
+        const mt = new Date(m.match_datetime).getTime();
+        if (mt > nowTs && mt < earliestTs) {
+          earliestTs = mt;
+          earliest = m.match_datetime;
+        }
+      }
+    }
+    return earliest;
+  }
+
   // ── Predictions ──────────────────────────────────────────────────────────
 
   async setPrediction(pred: Prediction): Promise<void> {

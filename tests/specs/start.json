@@ -1,13 +1,15 @@
 [
   {
-    "name": "/start replies with the welcome + main menu",
+    "name": "/start shows today's matches by league when no matches exist",
     "steps": [
       {
         "send": { "text": "/start" },
         "expect": [
           {
             "method": "sendMessage",
-            "payload": { "text": "👋 Welcome to Football Predictor! Tap a button below to get started." }
+            "payload": {
+              "text": "📅 No matches today!\n\nNo matches scheduled yet — check back soon!"
+            }
           }
         ]
       }
@@ -22,6 +24,38 @@
           {
             "method": "editMessageText",
             "payload": { "text": "👋 Welcome to Football Predictor! Tap a button below to get started." }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "today:show callback shows today's leagues",
+    "steps": [
+      {
+        "send": { "callback": "today:show" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "📅 No matches today!\n\nNo matches scheduled yet — check back soon!"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "today:league:invalid shows not found",
+    "steps": [
+      {
+        "send": { "callback": "today:league:nonexistent" },
+        "expect": [
+          {
+            "method": "editMessageText",
+            "payload": {
+              "text": "Couldn't find that league."
+            }
           }
         ]
       }
