@@ -1,6 +1,6 @@
 import { Composer } from "grammy";
 import type { BotContext } from "../toolkit/index.js";
-import { mainMenuKeyboard, registerMainMenuItem, inlineButton, inlineKeyboard, paginate } from "../toolkit/index.js";
+import { mainMenuKeyboard, registerMainMenuItem, inlineButton, inlineKeyboard } from "../toolkit/index.js";
 import { type Ctx } from "../bot.js";
 
 registerMainMenuItem({ label: "⚽ Matches", data: "matches:list", order: 10 });
@@ -21,64 +21,141 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 }
 
-const MATCHES_PER_PAGE = 5;
-
 const composer = new Composer<BotContext>();
 
-async function renderTodayLeaguesEdit(ctx: { editMessageText: Function; from?: { id: number }; chat?: { id: number } }) {
-  const storage = (ctx as unknown as Ctx).storage;
-  const chatId = ctx.chat?.id ?? 0;
-  const leaguesWithMatches = await storage.getLeaguesWithTodayMatches(chatId);
+/**
+ * Build the "today's matches grouped by league" message text.
+ * Sorts leagues by earliest kickoff time, then alphabetically if times tie.
+ */
+async function buildTodayGroupedText(storage: Ctx["storage"], chatId: number, now: () => Date = () => new Date()): Promise<string> {
+  const todayMatches = await storage.getTodayMatches(chatId, now);
 
-  if (leaguesWithMatches.length === 0) {
-    const nextDate = await storage.getNextMatchDate(chatId);
-    const nextDateText = nextDate
-      ? `Next match: ${formatDate(nextDate)} at ${formatTime(nextDate)}`
-      : "No matches scheduled yet — check back soon!";
-    const text = `📅 No matches today!\n\n${nextDateText}`;
-    const kb = inlineKeyboard([[inlineButton("⬅️ Back to menu", "menu:main")]]);
-    await ctx.editMessageText(text, { reply_markup: kb });
-    return;
+  if (todayMatches.length === 0) {
+    return "📅 No matches today!";
   }
 
-  const buttons = leaguesWithMatches.map((l) => [
-    inlineButton(`${l.league.name} (${l.league.country}) — ${l.matchCount} match${l.matchCount > 1 ? "es" : ""}`, `today:league:${l.league.id}`),
-  ]);
-  buttons.push([inlineButton("🏠 All matches", "matches:list")]);
-  buttons.push([inlineButton("❓ Help", "menu:help")]);
+  // Group matches by league_id
+  const leagueMatches = new Map<string, { name: string; country: string; matches: typeof todayMatches }>();
+  const noLeagueMatches: typeof todayMatches = [];
 
-  const text = `📅 Today's matches — pick a league:`;
-  await ctx.editMessageText(text, { reply_markup: inlineKeyboard(buttons) });
+  for (const m of todayMatches) {
+    if (m.league_id) {
+      const existing = leagueMatches.get(m.league_id);
+      if (existing) {
+        existing.matches.push(m);
+      } else {
+        const league = await storage.getLeague(chatId, m.league_id);
+        leagueMatches.set(m.league_id, {
+          name: league?.name ?? "Unknown League",
+          country: league?.country ?? "",
+          matches: [m],
+        });
+      }
+    } else {
+      noLeagueMatches.push(m);
+    }
+  }
+
+  // Sort leagues by earliest kickoff time, then alphabetically
+  const sortedLeagues = [...leagueMatches.values()].sort((a, b) => {
+    const aMin = Math.min(...a.matches.map((m) => new Date(m.match_datetime).getTime()));
+    const bMin = Math.min(...b.matches.map((m) => new Date(m.match_datetime).getTime()));
+    if (aMin !== bMin) return aMin - bMin;
+    return a.name.localeCompare(b.name);
+  });
+
+  const lines: string[] = [];
+  for (const league of sortedLeagues) {
+    const leagueHeader = league.country ? `${league.name} (${league.country})` : league.name;
+    lines.push(`⚽ ${leagueHeader}`);
+    for (const m of league.matches) {
+      lines.push(`  ${formatTime(m.match_datetime)} — ${m.home_team} vs ${m.away_team}`);
+    }
+    lines.push("");
+  }
+
+  // Matches without a league
+  if (noLeagueMatches.length > 0) {
+    lines.push("⚽ Other matches");
+    for (const m of noLeagueMatches) {
+      lines.push(`  ${formatTime(m.match_datetime)} — ${m.home_team} vs ${m.away_team}`);
+    }
+  }
+
+  return lines.join("\n").trim();
 }
 
-async function renderTodayLeaguesReply(ctx: { reply: Function; from?: { id: number }; chat?: { id: number } }) {
-  const storage = (ctx as unknown as Ctx).storage;
-  const chatId = ctx.chat?.id ?? 0;
-  const leaguesWithMatches = await storage.getLeaguesWithTodayMatches(chatId);
+/**
+ * Build the inline keyboard for today's matches grouped by league.
+ * Each match gets a "Predict" button.
+ */
+async function buildTodayGroupedKeyboard(storage: Ctx["storage"], chatId: number, now: () => Date = () => new Date()): Promise<{ text: string; keyboard: ReturnType<typeof inlineKeyboard> }> {
+  const text = await buildTodayGroupedText(storage, chatId, now);
+  const todayMatches = await storage.getTodayMatches(chatId, now);
 
-  if (leaguesWithMatches.length === 0) {
+  if (todayMatches.length === 0) {
     const nextDate = await storage.getNextMatchDate(chatId);
     const nextDateText = nextDate
-      ? `Next match: ${formatDate(nextDate)} at ${formatTime(nextDate)}`
-      : "No matches scheduled yet — check back soon!";
-    const text = `📅 No matches today!\n\n${nextDateText}`;
-    const kb = inlineKeyboard([[inlineButton("⬅️ Back to menu", "menu:main")]]);
-    await ctx.reply(text, { reply_markup: kb });
-    return;
+      ? `\n\nNext match: ${formatDate(nextDate)} at ${formatTime(nextDate)}`
+      : "";
+    return {
+      text: text + nextDateText,
+      keyboard: inlineKeyboard([[inlineButton("⬅️ Back to menu", "menu:main")]]),
+    };
   }
 
-  const buttons = leaguesWithMatches.map((l) => [
-    inlineButton(`${l.league.name} (${l.league.country}) — ${l.matchCount} match${l.matchCount > 1 ? "es" : ""}`, `today:league:${l.league.id}`),
-  ]);
-  buttons.push([inlineButton("🏠 All matches", "matches:list")]);
-  buttons.push([inlineButton("❓ Help", "menu:help")]);
+  // Group matches by league_id
+  const leagueMatches = new Map<string, { name: string; country: string; matches: typeof todayMatches }>();
+  const noLeagueMatches: typeof todayMatches = [];
 
-  const text = `📅 Today's matches — pick a league:`;
-  await ctx.reply(text, { reply_markup: inlineKeyboard(buttons) });
+  for (const m of todayMatches) {
+    if (m.league_id) {
+      const existing = leagueMatches.get(m.league_id);
+      if (existing) {
+        existing.matches.push(m);
+      } else {
+        const league = await storage.getLeague(chatId, m.league_id);
+        leagueMatches.set(m.league_id, {
+          name: league?.name ?? "Unknown League",
+          country: league?.country ?? "",
+          matches: [m],
+        });
+      }
+    } else {
+      noLeagueMatches.push(m);
+    }
+  }
+
+  const sortedLeagues = [...leagueMatches.values()].sort((a, b) => {
+    const aMin = Math.min(...a.matches.map((m) => new Date(m.match_datetime).getTime()));
+    const bMin = Math.min(...b.matches.map((m) => new Date(m.match_datetime).getTime()));
+    if (aMin !== bMin) return aMin - bMin;
+    return a.name.localeCompare(b.name);
+  });
+
+  const rows: ReturnType<typeof inlineButton>[][] = [];
+
+  for (const league of sortedLeagues) {
+    for (const m of league.matches) {
+      rows.push([
+        inlineButton(`🔮 Predict ${m.home_team} vs ${m.away_team}`, `predict:match:${m.id}`),
+      ]);
+    }
+  }
+
+  for (const m of noLeagueMatches) {
+    rows.push([
+      inlineButton(`🔮 Predict ${m.home_team} vs ${m.away_team}`, `predict:match:${m.id}`),
+    ]);
+  }
+
+  rows.push([inlineButton("🏠 All matches", "matches:list")]);
+  rows.push([inlineButton("❓ Help", "menu:help")]);
+
+  return { text, keyboard: inlineKeyboard(rows) };
 }
 
 composer.command("start", async (ctx) => {
-  console.log("[/start] user=%d chat=%d", ctx.from?.id, ctx.chat?.id);
   if (ctx.from) {
     try {
       const storage = (ctx as unknown as Ctx).storage;
@@ -87,11 +164,15 @@ composer.command("start", async (ctx) => {
         display_name: [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" "),
         handle: ctx.from.username,
       });
-    } catch (err) {
-      console.error("[/start] failed to save user:", err);
+    } catch {
+      // non-fatal
     }
   }
-  await renderTodayLeaguesReply(ctx);
+
+  const storage = (ctx as unknown as Ctx).storage;
+  const chatId = ctx.chat?.id ?? 0;
+  const { text, keyboard } = await buildTodayGroupedKeyboard(storage, chatId);
+  await ctx.reply(text, { reply_markup: keyboard });
 });
 
 composer.callbackQuery("menu:main", async (ctx) => {
@@ -99,95 +180,12 @@ composer.callbackQuery("menu:main", async (ctx) => {
   await ctx.editMessageText(WELCOME, { reply_markup: mainMenuKeyboard() });
 });
 
-// ── Today's leagues chooser ────────────────────────────────────────────────
-
 composer.callbackQuery("today:show", async (ctx) => {
   await ctx.answerCallbackQuery();
-  await renderTodayLeaguesEdit(ctx);
-});
-
-// ── Today's matches for a specific league ──────────────────────────────────
-
-composer.callbackQuery(/^today:league:(.+)$/, async (ctx) => {
-  await ctx.answerCallbackQuery();
-  const leagueId = ctx.match![1];
   const storage = (ctx as unknown as Ctx).storage;
   const chatId = ctx.chat?.id ?? 0;
-  const league = await storage.getLeague(chatId, leagueId);
-
-  if (!league) {
-    await ctx.editMessageText("Couldn't find that league.", {
-      reply_markup: inlineKeyboard([[inlineButton("⬅️ Back to leagues", "today:show")]]),
-    });
-    return;
-  }
-
-  const matches = await storage.getTodayMatchesByLeague(chatId, leagueId);
-
-  if (matches.length === 0) {
-    await ctx.editMessageText(`No matches today in ${league.name} — check back soon!`, {
-      reply_markup: inlineKeyboard([
-        [inlineButton("⬅️ Back to leagues", "today:show")],
-        [inlineButton("🏠 Menu", "menu:main")],
-      ]),
-    });
-    return;
-  }
-
-  await renderTodayLeagueMatches(ctx, chatId, league, matches, 0);
+  const { text, keyboard } = await buildTodayGroupedKeyboard(storage, chatId);
+  await ctx.editMessageText(text, { reply_markup: keyboard });
 });
-
-// ── Pagination for today's matches ─────────────────────────────────────────
-
-composer.callbackQuery(/^today:page:(.+):(\d+)$/, async (ctx) => {
-  await ctx.answerCallbackQuery();
-  const leagueId = ctx.match![1];
-  const page = parseInt(ctx.match![2], 10);
-  const storage = (ctx as unknown as Ctx).storage;
-  const chatId = ctx.chat?.id ?? 0;
-  const league = await storage.getLeague(chatId, leagueId);
-
-  if (!league) {
-    await ctx.editMessageText("Couldn't find that league.", {
-      reply_markup: inlineKeyboard([[inlineButton("⬅️ Back to menu", "today:show")]]),
-    });
-    return;
-  }
-
-  const matches = await storage.getTodayMatchesByLeague(chatId, leagueId);
-  await renderTodayLeagueMatches(ctx, chatId, league, matches, page);
-});
-
-async function renderTodayLeagueMatches(
-  ctx: { editMessageText: Function },
-  chatId: number,
-  league: { id: string; name: string; country: string },
-  matches: { id: string; home_team: string; away_team: string; match_datetime: string }[],
-  page: number,
-) {
-  const paged = paginate(matches, {
-    page,
-    perPage: MATCHES_PER_PAGE,
-    callbackPrefix: `today:page:${league.id}`,
-  });
-
-  const lines = paged.pageItems.map(
-    (m) => `⏰ ${formatTime(m.match_datetime)} — ${m.home_team} vs ${m.away_team}`,
-  );
-  const text = `⚽ ${league.name} (${league.country})\n📅 Today's matches:\n\n${lines.join("\n")}`;
-
-  const rows = paged.pageItems.map((m) => [
-    inlineButton(`🔮 Predict ${m.home_team} vs ${m.away_team}`, `predict:match:${m.id}`),
-  ]);
-
-  if (paged.controls.inline_keyboard.length > 0) {
-    rows.push(paged.controls.inline_keyboard[0] as { text: string; callback_data: string }[]);
-  }
-
-  rows.push([inlineButton("⬅️ Leagues", "today:show")]);
-  rows.push([inlineButton("🏠 Menu", "menu:main")]);
-
-  await ctx.editMessageText(text, { reply_markup: inlineKeyboard(rows) });
-}
 
 export default composer;
