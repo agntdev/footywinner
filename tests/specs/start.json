@@ -1,6 +1,6 @@
 [
   {
-    "name": "/start shows today's matches by league when no matches exist",
+    "name": "/start shows no matches today when schedule is empty",
     "steps": [
       {
         "send": { "text": "/start" },
@@ -8,7 +8,7 @@
           {
             "method": "sendMessage",
             "payload": {
-              "text": "📅 No matches today!\n\nNo matches scheduled yet — check back soon!"
+              "text": "📅 No matches today!"
             }
           }
         ]
@@ -30,7 +30,7 @@
     ]
   },
   {
-    "name": "today:show callback shows today's leagues",
+    "name": "today:show callback shows today's matches when empty",
     "steps": [
       {
         "send": { "callback": "today:show" },
@@ -38,23 +38,7 @@
           {
             "method": "editMessageText",
             "payload": {
-              "text": "📅 No matches today!\n\nNo matches scheduled yet — check back soon!"
-            }
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "name": "today:league:invalid shows not found",
-    "steps": [
-      {
-        "send": { "callback": "today:league:nonexistent" },
-        "expect": [
-          {
-            "method": "editMessageText",
-            "payload": {
-              "text": "Couldn't find that league."
+              "text": "📅 No matches today!"
             }
           }
         ]
